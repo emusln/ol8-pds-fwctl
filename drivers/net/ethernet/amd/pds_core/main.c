@@ -300,7 +300,8 @@ err_out_stop:
 err_out_teardown:
 	pdsc_teardown(pdsc, PDSC_TEARDOWN_REMOVING);
 err_out_unmap_bars:
-	timer_shutdown_sync(&pdsc->wdtimer);
+	//timer_shutdown_sync(&pdsc->wdtimer);
+	del_timer_sync(&pdsc->wdtimer);
 	if (pdsc->wq)
 		destroy_workqueue(pdsc->wq);
 	mutex_destroy(&pdsc->config_lock);
@@ -427,7 +428,8 @@ static void pdsc_remove(struct pci_dev *pdev)
 		 */
 		pdsc_sriov_configure(pdev, 0);
 
-		timer_shutdown_sync(&pdsc->wdtimer);
+		//timer_shutdown_sync(&pdsc->wdtimer);
+		del_timer_sync(&pdsc->wdtimer);
 		if (pdsc->wq)
 			destroy_workqueue(pdsc->wq);
 
@@ -456,7 +458,8 @@ static void pdsc_stop_health_thread(struct pdsc *pdsc)
 	if (pdsc->pdev->is_virtfn)
 		return;
 
-	timer_shutdown_sync(&pdsc->wdtimer);
+	//timer_shutdown_sync(&pdsc->wdtimer);
+	del_timer_sync(&pdsc->wdtimer);
 	if (pdsc->health_work.func)
 		cancel_work_sync(&pdsc->health_work);
 }

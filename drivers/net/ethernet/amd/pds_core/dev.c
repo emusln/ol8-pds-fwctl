@@ -4,6 +4,7 @@
 #include <linux/errno.h>
 #include <linux/pci.h>
 #include <linux/utsname.h>
+#include <linux/ctype.h>
 
 #include "core.h"
 
