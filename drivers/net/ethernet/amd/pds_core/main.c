@@ -264,6 +264,12 @@ static int pdsc_init_pf(struct pdsc *pdsc)
 
 	mutex_unlock(&pdsc->config_lock);
 
+	err = pdsc_auxbus_dev_add(pdsc, pdsc);
+	if (err) {
+		mutex_unlock(&pdsc->config_lock);
+		goto err_out_teardown;
+	}
+
 	dl = priv_to_devlink(pdsc);
 	devl_lock(dl);
 	err = devl_params_register(dl, pdsc_dl_params,
@@ -427,6 +433,7 @@ static void pdsc_remove(struct pci_dev *pdev)
 		 * shut themselves down.
 		 */
 		pdsc_sriov_configure(pdev, 0);
+		pdsc_auxbus_dev_del(pdsc, pdsc);
 
 		//timer_shutdown_sync(&pdsc->wdtimer);
 		del_timer_sync(&pdsc->wdtimer);
