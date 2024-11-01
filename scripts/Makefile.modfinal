@@ -1,0 +1,154 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# ===========================================================================
+# Module final link and CTF generation
+# ===========================================================================
+# 1) compile all <module>.mod.c files
+# 2) for external modules, generate CTF for the module (there is an extra,
+#    externally-invoked target that does this for the entire kernel but does
+#    not invoke the rest of the module-building process)
+# 3) final link of the module to a <module.ko> file
+
+PHONY := __modfinal
+__modfinal:
+
+include include/config/auto.conf
+include $(srctree)/scripts/Kbuild.include
+
+# for c_flags and mod-prelink-ext
+include $(srctree)/scripts/Makefile.lib
+
+# find all modules listed in modules.order
+modules := $(sort $(shell cat $(MODORDER)))
+
+__modfinal: $(modules)
+	@:
+
+# modname and part-of-module are set to make c_flags define proper module flags
+modname = $(notdir $(@:.mod.o=))
+part-of-module = y
+
+quiet_cmd_cc_o_c = CC [M]  $@
+      cmd_cc_o_c = $(CC) $(filter-out $(CC_FLAGS_CFI) $(CFLAGS_GCOV) $(CFLAGS_KCSAN), $(c_flags)) -c -o $@ $<
+
+%.mod.o: %.mod.c FORCE
+	$(call if_changed_dep,cc_o_c)
+
+# Split the CTF out of the kernel's object files into separate .ctf files so
+# that it doesn't take up space in the modules on disk: it will be consumed by
+# the specialized ctfarchive tool when 'make ctf' is invoked.
+
+# Nothing needs to be done if CTF is turned off or if a standalone module is
+# being built.
+module-ctf-postlink = mv $(1).tmp $(1);
+
+ifdef CONFIG_CTF
+
+# This is quite tricky.  The CTF machinery needs to be told about all the
+# built-in objects as well as all the external modules -- but Makefile.modfinal
+# only knows about the latter.  So the toplevel makefile emits the names of the
+# built-in objects into a temporary file, which is then catted and its contents
+# used as prerequisites by this rule.
+#
+# We write the names of the object files to be scanned for CTF content into a
+# file, then use that, to avoid hitting command-line length limits.
+
+ifeq ($(KBUILD_EXTMOD),)
+ctf-modules := $(shell find . -name '*.ko.ctf' -print)
+quiet_cmd_ctf = CTFA
+      cmd_ctf = scripts/ctf/ctfarchive vmlinux.ctfa objects.builtin modules_thick.builtin $(ctf-filelist)
+ctf-builtins := objects.builtin
+ctf-filelist := .ctf.filelist
+ctf-filelist-raw := .ctf.filelist.raw
+
+define module-ctf-postlink =
+	$(OBJCOPY) --only-section=.ctf $(1).tmp $(1).ctf && \
+	$(OBJCOPY) --remove-section=.ctf $(1).tmp $(1) && rm -f $(1).tmp;
+endef
+
+# Split a list up like shell xargs does.
+define xargs =
+$(1) $(wordlist 1,1024,$(2))
+$(if $(word 1025,$(2)),$(call xargs,$(1),$(wordlist 1025,$(words $(2)),$(2))))
+endef
+
+$(ctf-filelist-raw): $(ctf-builtins) $(ctf-modules)
+	@rm -f $(ctf-filelist-raw);
+	$(call xargs,@printf "%s\n" >> $(ctf-filelist-raw),$^)
+	@touch $(ctf-filelist-raw)
+
+$(ctf-filelist): $(ctf-filelist-raw)
+	@rm -f $(ctf-filelist);
+	@cat $(ctf-filelist-raw) | while read -r obj; do \
+		case $$obj in \
+		$(ctf-builtins)) cat $$obj >> $(ctf-filelist);; \
+		*.a) ar t $$obj > $(ctf-filelist);; \
+		*.builtin) cat $$obj >> $(ctf-filelist);; \
+		*) echo "$$obj" >> $(ctf-filelist);; \
+		esac; \
+	done
+	@touch $(ctf-filelist)
+
+# The CTF depends on the output CTF file list, and that depends
+# on the .ko files for the modules.
+vmlinux.ctfa: $(ctf-filelist) FORCE
+	$(call if_changed,ctf)
+
+targets += vmlinux.ctfa
+
+endif		# KBUILD_EXTMOD
+
+endif		# !CONFIG_CTF
+
+ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
+
+quiet_cmd_ld_ko_o = LD [M]  $@
+      cmd_ld_ko_o +=							\
+	$(LD) -r $(KBUILD_LDFLAGS)					\
+		$(KBUILD_LDFLAGS_MODULE) $(LDFLAGS_MODULE)		\
+		-T scripts/module.lds $(LDFLAGS_$(modname)) -o $@.tmp	\
+		$(filter %.o, $^) &&					\
+	$(call module-ctf-postlink,$@)					\
+	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
+
+quiet_cmd_btf_ko = BTF [M] $@
+      cmd_btf_ko = 							\
+	if [ -f vmlinux ]; then						\
+		LLVM_OBJCOPY="$(OBJCOPY)" $(PAHOLE) -J $(PAHOLE_FLAGS) --btf_base vmlinux $@; \
+	else								\
+		printf "Skipping BTF generation for %s due to unavailability of vmlinux\n" $@ 1>&2; \
+	fi;
+
+# Same as newer-prereqs, but allows to exclude specified extra dependencies
+newer_prereqs_except = $(filter-out $(PHONY) $(1),$?)
+
+# Same as if_changed, but allows to exclude specified extra dependencies
+if_changed_except = $(if $(call newer_prereqs_except,$(2))$(cmd-check),      \
+	$(cmd);                                                              \
+	printf '%s\n' 'cmd_$@ := $(make-cmd)' > $(dot-target).cmd, @:)
+
+
+# Re-generate module BTFs if either module's .ko or vmlinux changed
+$(modules): %.ko: %$(mod-prelink-ext).o %.mod.o scripts/module.lds $(ifneq ($(KBUILD_EXTMOD),),vmlinux) FORCE
+	+$(call if_changed_except,ld_ko_o,vmlinux)
+ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+	+$(if $(newer-prereqs),$(call cmd,btf_ko))
+endif
+
+targets += $(modules) $(modules:.ko=.mod.o)
+
+# Add FORCE to the prequisites of a target to force it to be always rebuilt.
+# ---------------------------------------------------------------------------
+
+PHONY += FORCE
+FORCE:
+
+# Read all saved command lines and dependencies for the $(targets) we
+# may be building above, using $(if_changed{,_dep}). As an
+# optimization, we don't need to read them if the target does not
+# exist, we will rebuild anyway in that case.
+
+existing-targets := $(wildcard $(sort $(targets)))
+
+-include $(foreach f,$(existing-targets),$(dir $(f)).$(notdir $(f)).cmd)
+
+.PHONY: $(PHONY)

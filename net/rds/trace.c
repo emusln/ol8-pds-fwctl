@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Trace points for core RDS functions.
+ *
+ * Author: Alan Maguire <alan.maguire@oracle.com>
+ *
+ * Copyright (c) 2020, Oracle and/or its affiliates.
+ */
+
+#define CREATE_TRACE_POINTS
+
+#include <linux/in6.h>
+#include <linux/rds.h>
+#include <linux/cgroup.h>
+#include "rds.h"
+
+#include "trace.h"
+
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_state_change_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive_csum_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_ingress);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_egress);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_send_ping);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_send_pong);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_receive_ping);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_receive_pong);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_disable);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_add_device);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_add_device_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_remove_device);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_remove_device_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_shutdown_device);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_accept_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_handle_connect);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_handle_connect_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_initiate_connect);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_initiate_connect_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_path_connect);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_path_connect_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_path_shutdown_prepare);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_path_shutdown_prepare_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_yielding);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_right_of_way);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_stale);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_expired);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_accepting);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_success);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_conn_yield_accept_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_setup_fastreg);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_setup_fastreg_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_setup_qp);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_setup_qp_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_send_cqe_handler);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_send_cqe_handler_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_rdma_cm_event_handler);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_rdma_cm_event_handler_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_add_credits);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_advertise_credits);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_flow_cntrl_grab_credits);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_queue_work);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_queue_worker);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_queue_cancel_work);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_queue_flush_work);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_queue_work);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_queue_worker);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_queue_cancel_work);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_mr_destroy);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_mr_get);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_mr_get_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_state_change);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_connect);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_connect_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_accept);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_accept_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_listen);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_listen_err);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_tcp_shutdown);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_free_cache_one);
