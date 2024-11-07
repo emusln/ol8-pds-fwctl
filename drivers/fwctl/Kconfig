@@ -20,4 +20,15 @@ config FWCTL_MLX5
 	  mainstream kernel.
 
 	  If you don't know what to do here, say N.
+
+config FWCTL_PDS
+	tristate "AMD/Pensando pds fwctl driver"
+	depends on PDS_CORE
+	help
+	  The nicctl userspace utility provides an interface for users to access
+	  debug and configuration information features of the AMD/Pensando DSC
+	  family.  This pds_fwctl driver is the kernel interface to open the channel
+	  from userspace through the pds_core driver and into the DSC firmware.
+
+	  If you don't know what to do here, say N.
 endif
