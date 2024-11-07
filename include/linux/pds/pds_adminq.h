@@ -42,6 +42,10 @@ enum pds_core_adminq_opcode {
 	/* SR/IOV commands */
 	PDS_AQ_CMD_VF_GETATTR		= 60,
 	PDS_AQ_CMD_VF_SETATTR		= 61,
+
+	/* FWCTL commands */
+	PDS_AQ_CMD_FWCTL_IDENT		= 70,
+	PDS_AQ_CMD_FWCTL_RPC		= 71,
 };
 
 /*
@@ -1179,6 +1183,109 @@ struct pds_lm_host_vf_status_cmd {
 	u8     status;
 };
 
+/**
+ * struct pds_fwctl_cmd - Firmware control command structure
+ * @opcode: Opcode
+ * @ep: Endpoint identifier.
+ * @op: Operation identifier.
+ */
+struct pds_fwctl_cmd {
+	u8     opcode;
+	u8     rsvd[3];
+	__le32 ep;
+	__le32 op;
+};
+
+/**
+ * struct pds_fwctl_comp - Firmware control completion structure
+ * @status: Status of the firmware control operation
+ * @comp_index: Completion index in little-endian format
+ * @color: Color bit indicating the state of the completion
+ */
+struct pds_fwctl_comp {
+	u8     status;
+	u8     rsvd;
+	__le16 comp_index;
+	u8     rsvd2[11];
+	u8     color;
+};
+
+/**
+ * struct pds_fwctl_ident_cmd - Firmware control identification command structure
+ * @opcode: Operation code for the command
+ * @len: Length of the identification data
+ * @ident_pa: Physical address of the identification data
+ */
+struct pds_fwctl_ident_cmd {
+	u8     opcode;
+	u8     rsvd;
+	u8     version;
+	u8     rsvd2;
+	__le32 len;
+	__le64 ident_pa;
+};
+
+/**
+ * struct pds_fwctl_ident - Firmware control identification structure
+ * @features: Supported features
+ * @max_req_sz: Maximum request size
+ * @max_resp_sz: Maximum response size
+ */
+struct pds_fwctl_ident {
+	__le64 features;
+	u8     version;
+	u8     rsvd[3];
+	__le32 max_req_sz;
+	__le32 max_resp_sz;
+};
+
+/**
+ * struct pds_fwctl_rpc_cmd - Firmware control RPC command.
+ * @opcode: opcode PDS_FWCTL_CMD_RPC
+ * @ep: Endpoint identifier.
+ * @op: Operation identifier.
+ * @req_pa: Physical address of the request.
+ * @resp_pa: Physical address of the response.
+ * @req_sz: Size of the request.
+ * @resp_sz: Size of the response.
+ */
+struct pds_fwctl_rpc_cmd {
+	u8     opcode;
+	u8     rsvd[3];
+	__le32 ep;
+	__le32 op;
+	__le32 flags;
+#define PDS_FWCTL_RPC_IND_REQ	0x1
+#define PDS_FWCTL_RPC_IND_RESP	0x2
+	union {
+		u8 data[48];
+		struct {
+			__le64 req_pa;
+			__le64 resp_pa;
+			__le32 req_sz;
+			__le32 resp_sz;
+		};
+	};
+};
+
+/**
+ * struct pds_fwctl_rpc_comp - Structure representing the completion of a firmware control RPC.
+ * @status: Status of the command
+ * @comp_index: Completion index of the command
+ * @err: Error code, if any, from the RPC.
+ * @resp_sz: Size of the response.
+ * @color: Color bit indicating the state of the completion.
+ */
+struct pds_fwctl_rpc_comp {
+	u8     status;
+	u8     rsvd;
+	__le16 comp_index;
+	__le32 err;
+	__le32 resp_sz;
+	u8     rsvd2[3];
+	u8     color;
+};
+
 union pds_core_adminq_cmd {
 	u8     opcode;
 	u8     bytes[64];
@@ -1216,6 +1323,10 @@ union pds_core_adminq_cmd {
 	struct pds_lm_dirty_enable_cmd	  lm_dirty_enable;
 	struct pds_lm_dirty_disable_cmd	  lm_dirty_disable;
 	struct pds_lm_dirty_seq_ack_cmd	  lm_dirty_seq_ack;
+
+	struct pds_fwctl_cmd		  fwctl;
+	struct pds_fwctl_ident_cmd	  fwctl_ident;
+	struct pds_fwctl_rpc_cmd	  fwctl_rpc;
 };
 
 union pds_core_adminq_comp {
@@ -1243,6 +1354,9 @@ union pds_core_adminq_comp {
 
 	struct pds_lm_state_size_comp	  lm_state_size;
 	struct pds_lm_dirty_status_comp	  lm_dirty_status;
+
+	struct pds_fwctl_comp		  fwctl;
+	struct pds_fwctl_rpc_comp	  fwctl_rpc;
 };
 
 #ifndef __CHECKER__
