@@ -12,6 +12,9 @@
 #include <linux/pds/pds_adminq.h>
 #include <linux/pds/pds_auxbus.h>
 
+DEFINE_FREE(kfree_errptr, void *, if (!IS_ERR_OR_NULL(_T)) kfree(_T));
+DEFINE_FREE(kvfree_errptr, void *, if (!IS_ERR_OR_NULL(_T)) kvfree(_T));
+
 struct pdsfc_uctx {
 	struct fwctl_uctx uctx;
 	u32 uctx_caps;
@@ -30,6 +33,9 @@ static int pdsfc_open_uctx(struct fwctl_uctx *uctx)
 {
 	struct pdsfc_dev *pdsfc = container_of(uctx->fwctl, struct pdsfc_dev, fwctl);
 	struct pdsfc_uctx *pdsfc_uctx = container_of(uctx, struct pdsfc_uctx, uctx);
+	struct device *dev = &uctx->fwctl->dev;
+
+	dev_info(dev, "%s: caps = 0x%04x\n", __func__, pdsfc->caps);
 
 	pdsfc_uctx->uctx_caps = pdsfc->caps;
 
@@ -38,13 +44,18 @@ static int pdsfc_open_uctx(struct fwctl_uctx *uctx)
 
 static void pdsfc_close_uctx(struct fwctl_uctx *uctx)
 {
+	struct device *dev = &uctx->fwctl->dev;
+
+	dev_info(dev, "%s:\n", __func__);
 }
 
 static void *pdsfc_info(struct fwctl_uctx *uctx, size_t *length)
 {
 	struct pdsfc_uctx *pdsfc_uctx = container_of(uctx, struct pdsfc_uctx, uctx);
+	struct device *dev = &uctx->fwctl->dev;
 	struct fwctl_info_pds *info;
 
+	dev_info(dev, "%s:\n", __func__);
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return ERR_PTR(-ENOMEM);
@@ -58,33 +69,107 @@ static void *pdsfc_fw_rpc(struct fwctl_uctx *uctx, enum fwctl_rpc_scope scope,
 			  void *in, size_t in_len, size_t *out_len)
 {
 	struct pdsfc_dev *pdsfc = container_of(uctx->fwctl, struct pdsfc_dev, fwctl);
+	struct fwctl_rpc_pds *rpc = (struct fwctl_rpc_pds *)in;
+	void *out_payload __free(kfree_errptr) = NULL;
+	void *in_payload __free(kfree_errptr) = NULL;
+	struct device *dev = &uctx->fwctl->dev;
+	union pds_core_adminq_comp comp = {0};
+	union pds_core_adminq_cmd cmd = {0};
+	dma_addr_t out_payload_dma_addr = 0;
+	dma_addr_t in_payload_dma_addr = 0;
+	void *out = NULL;
 	int ret;
 
-	union pds_core_adminq_cmd cmd = {
-		.fwctl_rpc.opcode = PDS_AQ_CMD_FWCTL_RPC,
-	};
-	union pds_core_adminq_comp *resp = NULL;
+	if (rpc->in.len > 0) {
+		/* allocate dma'able request buffer */
+		in_payload = kzalloc(rpc->in.len, GFP_KERNEL);
+		if (!in_payload) {
+			dev_err(dev, "Failed to allocate in_payload\n");
+			out = ERR_PTR(-ENOMEM);
+			goto done;
+		}
 
-	if (scope > FWCTL_RPC_DEBUG_READ_ONLY)
-		return ERR_PTR(-EPERM);
+		if (copy_from_user(in_payload, u64_to_user_ptr(rpc->in.payload),
+				   rpc->in.len)) {
+			dev_err(dev, "Failed to copy in_payload from user\n");
+			out = ERR_PTR(-EFAULT);
+			goto done;
+		}
 
-	/* alloc a return data buffer that fwctl can free */
-	resp = kvzalloc(sizeof(*resp), GFP_KERNEL);
-	if (!resp)
-		return ERR_PTR(-ENOMEM);
+		in_payload_dma_addr = dma_map_single(dev->parent, in_payload,
+						     rpc->in.len, DMA_TO_DEVICE);
+		if (dma_mapping_error(dev->parent, in_payload_dma_addr)) {
+			dev_err(dev, "Failed to map in_payload\n");
+			out = ERR_PTR(-ENOMEM);
+			goto done;
+		}
+		cmd.fwctl_rpc.flags |= PDS_FWCTL_RPC_IND_REQ;
+	}
 
-	/* copy the incoming request into the adminq request */
-	memcpy(cmd.fwctl_rpc.data, in,
-	       min(in_len, sizeof(cmd.fwctl_rpc.data)));
+	if (rpc->out.len > 0) {
+		/* allocate dma'able response buffer */
+		out_payload = kzalloc(rpc->out.len, GFP_KERNEL);
+		if (!out_payload) {
+			dev_err(dev, "Failed to allocate out_payload\n");
+			out = ERR_PTR(-ENOMEM);
+			goto done;
+		}
 
-	/* send the adminq request */
-	ret = pds_client_adminq_cmd(pdsfc->padev, &cmd, sizeof(cmd), resp, 0);
-	if (ret)
-		return ERR_PTR(ret);
-	*out_len = sizeof(*resp);
+		out_payload_dma_addr = dma_map_single(dev->parent, out_payload,
+						      rpc->out.len, DMA_FROM_DEVICE);
+		if (dma_mapping_error(dev->parent, out_payload_dma_addr)) {
+			dev_err(dev, "Failed to map out_payload\n");
+			out = ERR_PTR(-ENOMEM);
+			goto done;
+		}
+		cmd.fwctl_rpc.flags |= PDS_FWCTL_RPC_IND_RESP;
+	}
 
-	/* return a pointer to the allocated response buffer */
-	return resp;
+	cmd.fwctl_rpc.opcode = PDS_AQ_CMD_FWCTL_RPC;
+	cmd.fwctl_rpc.ep = cpu_to_le32(rpc->in.ep);
+	cmd.fwctl_rpc.op = cpu_to_le32(rpc->in.op);
+	cmd.fwctl_rpc.req_pa = cpu_to_le64(in_payload_dma_addr);
+	cmd.fwctl_rpc.req_sz = cpu_to_le32(rpc->in.len);
+	cmd.fwctl_rpc.resp_pa = cpu_to_le64(out_payload_dma_addr);
+	cmd.fwctl_rpc.resp_sz = cpu_to_le32(rpc->out.len);
+
+	dev_info(dev, "%s: opcode %d ep %d op %d req_pa %llx req_sz %d resp_pa %llx resp_sz %d\n",
+			__func__, cmd.fwctl_rpc.opcode, rpc->in.ep, rpc->in.op,
+			cmd.fwctl_rpc.req_pa, cmd.fwctl_rpc.req_sz,
+			cmd.fwctl_rpc.resp_pa, cmd.fwctl_rpc.resp_sz);
+
+	ret = pds_client_adminq_cmd(pdsfc->padev, &cmd, sizeof(cmd), &comp, 0);
+	if (ret) {
+		dev_err(dev, "Failed to send adminq cmd\n");
+		out = ERR_PTR(ret);
+		goto done;
+	}
+
+	dev_info(dev, "%s: status %d comp_index %d err %d resp_sz %d color %d\n",
+			__func__, comp.fwctl_rpc.status, comp.fwctl_rpc.comp_index,
+			comp.fwctl_rpc.err, comp.fwctl_rpc.resp_sz,
+			comp.fwctl_rpc.color);
+
+	if (copy_to_user(u64_to_user_ptr(rpc->out.payload), out_payload, rpc->out.len)) {
+		dev_err(dev, "Failed to copy out_payload to user\n");
+		out = ERR_PTR(-EFAULT);
+		goto done;
+	}
+
+	rpc->out.retval = le32_to_cpu(comp.fwctl_rpc.err);
+	*out_len = in_len;
+	out = in;
+
+done:
+	if (in_payload_dma_addr)
+		dma_unmap_single(dev->parent, in_payload_dma_addr,
+				 rpc->in.len, DMA_TO_DEVICE);
+
+	if (out_payload_dma_addr)
+		dma_unmap_single(dev->parent, out_payload_dma_addr,
+				 rpc->out.len, DMA_FROM_DEVICE);
+
+	return out;
 }
 
 static const struct fwctl_ops pdsfc_ops = {
